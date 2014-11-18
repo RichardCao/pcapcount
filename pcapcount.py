@@ -10,6 +10,10 @@ try:
         packetscount = packetscount + 1
         print packetscount
         p = dpkt.ethernet.Ethernet(pkt)
+        if p == None
+            continue
+        if p.data == None
+            continue
 #        print p
 #        print "\n"
 #        print p.data
@@ -26,14 +30,15 @@ try:
             dst='%d.%d.%d.%d' % tuple(map(ord,list(p.data.dst)))
         else:
             dst= "........"
-        if hasattr(p.data.data, "sport"):
-            sport = p.data.data.sport
-        else:
-            sport= -1
-        if hasattr(p.data.data, "dport"):
-            dport = p.data.data.dport
-        else:
-            dport= -1
+        if hasattr(p.data, "data"):
+            if hasattr(p.data.data, "sport"):
+                sport = p.data.data.sport
+            else:
+                sport= -1
+            if hasattr(p.data.data, "dport"):
+                dport = p.data.data.dport
+            else:
+                dport= -1
         if flowcounts.has_key(src + "-" + dst):
             flowcounts[src + "-" + dst] = flowcounts[src + "-" + dst] + 1;
         else:
