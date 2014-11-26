@@ -4,6 +4,7 @@ import threading
 import time
 import copy
 import sys
+import traceback
 
 
 class sendData(threading.Thread):
@@ -14,9 +15,10 @@ class sendData(threading.Thread):
         self.interval = interval
         self.outfilepre = outfilepre
 	self.myblock = myblock
+	self.threadalive = True
 
     def run(self):
-        while True:
+        while self.threadalive:
 	    #use len(self.listeninstance.flow_count) instead of self.listeninstance.packetscountslot for safe access
             if(self.listeninstance != None and len(self.listeninstance.flow_count) > 0): 
 		self.myblock.acquire()
@@ -35,6 +37,8 @@ class sendData(threading.Thread):
                 out.write("\n")                
                 out.close()
             time.sleep(self.interval)
+    def stop(self):
+	self.threadalive = False
 
 class listenInterface(threading.Thread):
 
@@ -46,6 +50,7 @@ class listenInterface(threading.Thread):
         self.flow_count = {}
         self.pc = None
 	self.myblock = myblock
+	self.threadalive = True
     
     def run(self):
         self.startListen()
@@ -53,9 +58,14 @@ class listenInterface(threading.Thread):
     def startListen(self):
         try:
             self.pc = pcap.pcap(self.interface)
-        except:
-           print "error"
-        for ts, pkt in self.pc:
+	except Exception, ex:
+            print "\n[ERROR]Failed to listen the interface!"
+	    traceback.print_exc()
+            return
+	for ts, pkt in self.pc:
+	    if not self.threadalive:
+		print 222222222222222L
+		return
             self.packetscount = self.packetscount + 1
 	    print "\rpackets captured = %d" % self.packetscount,
     	    sys.stdout.flush()
@@ -88,10 +98,41 @@ class listenInterface(threading.Thread):
                 self.flow_count[(src, dst)] = 1;
             self.packetscountslot = self.packetscountslot + 1
 	    self.myblock.release()
+    def stop(self):
+	self.threadalive = False
+
+class listenController(threading.Thread):
+    def init(self):
+	threading.Thread.__init__(self)
+    def run(self):
+	try:
+	    myblock = threading.RLock()
+            listeninstance = listenInterface("eth1", myblock)
+            sendinstance = sendData(listeninstance, 2, "output", myblock)
+	    print 1
+            listeninstance.start()
+	    print 2
+	    sendinstance.start()
+	    print 3
+	    time.sleep(3)
+	    print 4
+	    listeninstance.stop()
+	    print 5
+	    sendinstance.stop()
+	    print 6
+	    1/0
+	except Exception, ex:
+	    print 222
+	    print 7
+	    return
+	
 
 if __name__ == "__main__":
-    myblock = threading.RLock()
-    listeninstance = listenInterface("eth1", myblock)
-    sendinstance = sendData(listeninstance, 2, "output", myblock)
-    sendinstance.start()
-    listeninstance.start()
+    try:
+	listen = listenController()
+    	listen.start()
+    	listen.join()
+    except:
+	print 111
+	listen.close()
+    
