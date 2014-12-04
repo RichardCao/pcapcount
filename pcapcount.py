@@ -1,17 +1,18 @@
 import pcap
 import dpkt
-import threading
+import multiprocessing
 import time
 import copy
-import sys
 import traceback
+import atexit
+import signal
+import sys
 
+class sendData(multiprocessing.Process):
 
-class sendData(threading.Thread):
-
-    def __init__(self, listeninstance, interval, outfilepre, myblock):
-        threading.Thread.__init__(self)
-        self.listeninstance = listeninstance
+    def __init__(self, dict_f,  interval, outfilepre, myblock):
+        multiprocessing.Process.__init__(self)
+        self.li_flow_count = dict_f
         self.interval = interval
         self.outfilepre = outfilepre
 	self.myblock = myblock
@@ -19,18 +20,21 @@ class sendData(threading.Thread):
 
     def run(self):
         while self.threadalive:
-	    #use len(self.listeninstance.flow_count) instead of self.listeninstance.packetscountslot for safe access
-            if(self.listeninstance != None and len(self.listeninstance.flow_count) > 0): 
+	    self.myblock.acquire()
+	    count_length = len(self.li_flow_count)
+	    self.myblock.release()
+            if count_length > 1: 
 		self.myblock.acquire()
-		# copy works as well as deepcopy since tuple and int are unchangable
-		flow_count_f = self.listeninstance.flow_count.copy()
-		self.listeninstance.flow_count.clear()
-		packetscountslot_f = self.listeninstance.packetscountslot
-                self.listeninstance.packetscountslot = 0
+		# copy works as well as deepcopy since int, string(for pktcountslot) and tuple int are unchangable
+		flow_count_f = self.li_flow_count.copy()
+		self.li_flow_count.clear()
+		self.li_flow_count["pktcountslot"] = 0
 		self.myblock.release()
+		count_slot = flow_count_f["pktcountslot"]
+		del flow_count_f["pktcountslot"]
                 outfile = "./" + self.outfilepre + time.strftime("%Y-%m-%d-%H-%M-%S")
-                out = open(outfile, 'w')
-                out.write("# of flows = " + str(len(flow_count_f)) + "\n# of packets = " + str(packetscountslot_f) + "\n")
+		out = open(outfile, 'w')
+                out.write("# of flows = " + str(len(flow_count_f)) + "\n# of packets = " + str(count_slot) + "\n")
                 sorted_flow_count = sorted(flow_count_f.iteritems(), key = lambda asd:asd[1], reverse = True)
                 for obj in sorted_flow_count:
                     out.write(obj[0][0] + " " + obj[0][1] + " " + str(obj[1]) +  "\n")
@@ -40,14 +44,14 @@ class sendData(threading.Thread):
     def stop(self):
 	self.threadalive = False
 
-class listenInterface(threading.Thread):
+class listenInterface(multiprocessing.Process):
 
-    def __init__(self, interface, myblock):
-        threading.Thread.__init__(self)
+    def __init__(self, interface, dict_f, myblock):
+        multiprocessing.Process.__init__(self)
         self.interface = interface
         self.packetscount = 0
 	self.packetscountslot = 0
-        self.flow_count = {}
+        self.flow_count = dict_f
         self.pc = None
 	self.myblock = myblock
 	self.threadalive = True
@@ -56,15 +60,15 @@ class listenInterface(threading.Thread):
         self.startListen()
 
     def startListen(self):
+	print "start capturing %s . . ." % self.interface
         try:
             self.pc = pcap.pcap(self.interface)
-	except Exception, ex:
+	except Exception as ex:
             print "\n[ERROR]Failed to listen the interface!"
 	    traceback.print_exc()
             return
 	for ts, pkt in self.pc:
 	    if not self.threadalive:
-		print 222222222222222L
 		return
             self.packetscount = self.packetscount + 1
 	    print "\rpackets captured = %d" % self.packetscount,
@@ -77,11 +81,11 @@ class listenInterface(threading.Thread):
             if hasattr(p.data, "src"):
                 src ='%d.%d.%d.%d' % tuple(map(ord, list(p.data.src)))
             else: 
-                src= "........"
+                src= "256.256.256.256"
             if hasattr(p.data, "dst"):
                 dst='%d.%d.%d.%d' % tuple(map(ord, list(p.data.dst)))
             else:
-                dst= "........"
+                dst= "256.256.256.256"
             if hasattr(p.data, "data"):
                 if hasattr(p.data.data, "sport"):
                     sport = p.data.data.sport
@@ -96,43 +100,54 @@ class listenInterface(threading.Thread):
                 self.flow_count[(src, dst)] = self.flow_count[(src, dst)] + 1;
             else:
                 self.flow_count[(src, dst)] = 1;
-            self.packetscountslot = self.packetscountslot + 1
+            self.flow_count["pktcountslot"] = self.flow_count["pktcountslot"] + 1
+	    #print "length = %d" % len(self.flow_count)
 	    self.myblock.release()
+
     def stop(self):
 	self.threadalive = False
 
-class listenController(threading.Thread):
+class listenController(multiprocessing.Process):
     def init(self):
-	threading.Thread.__init__(self)
+	multiprocessing.Process.__init__(self)
+	self.listeninstance = None
+	self.sendinstance = None
     def run(self):
 	try:
-	    myblock = threading.RLock()
-            listeninstance = listenInterface("eth1", myblock)
-            sendinstance = sendData(listeninstance, 2, "output", myblock)
-	    print 1
-            listeninstance.start()
-	    print 2
-	    sendinstance.start()
-	    print 3
-	    time.sleep(3)
-	    print 4
-	    listeninstance.stop()
-	    print 5
-	    sendinstance.stop()
-	    print 6
-	    1/0
+	    mgr = multiprocessing.Manager()
+	    dict_f = mgr.dict()
+	    dict_f["pktcountslot"] = 0
+	    myblock = multiprocessing.RLock()
+	    self.listeninstance = listenInterface("eth1", dict_f, myblock)
+            self.listeninstance.start()
+            self.sendinstance = sendData(dict_f, 3, "output", myblock)
+	    self.sendinstance.start()
+	    self.listeninstance.join()
+	    self.sendinstance.join()
+	    self.listeninstance.stop()
+	    self.sendinstance.stop()
 	except Exception, ex:
-	    print 222
-	    print 7
+	    print "failed"
+	    print ex
 	    return
+    def killall(self):
+	self.listeninstance.terminate()
+	self.sendinstance.terminate()
 	
+def _exit_clean():
+    listen.killall()
+    listen.terminate()
 
+global listen
 if __name__ == "__main__":
+    global listen
+    signal.signal(signal.SIGINT, _exit_clean)
+    signal.signal(signal.SIGTERM, _exit_clean)
     try:
 	listen = listenController()
-    	listen.start()
+	listen.start()
+    	atexit.register(_exit_clean)
     	listen.join()
     except:
-	print 111
-	listen.close()
-    
+	self.terminate()
+	listen.terminate() 
