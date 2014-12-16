@@ -33,11 +33,13 @@ class sendData(multiprocessing.Process):
 		count_slot = flow_count_f["pktcountslot"]
 		del flow_count_f["pktcountslot"]
 		''' replace the following part with curl request'''
-                outfile = "./" + self.outfilepre + time.strftime("%Y-%m-%d-%H-%M-%S")
+		outfile = "./" + self.outfilepre + time.strftime("%Y-%m-%d-%H-%M-%S")
 		out = open(outfile, 'w')
                 out.write("# of flows = " + str(len(flow_count_f)) + "\n# of packets = " + str(count_slot) + "\n")
                 sorted_flow_count = sorted(flow_count_f.iteritems(), key = lambda asd:asd[1], reverse = True)
-                for obj in sorted_flow_count:
+                rest_str = '{' + '"' + sorted_flow_count[0][0][0]  + '-' + sorted_flow_count[0][0][1] +  '":' + str(sorted_flow_count[0][1]) + ''.join(', "' + obj[0][0] + '-' + obj[0][1] +'":' + str(obj[1]) for obj in sorted_flow_count[1:]) + '}'
+                print "rest_str =", rest_str
+		for obj in sorted_flow_count:
                     out.write(obj[0][0] + " " + obj[0][1] + " " + str(obj[1]) +  "\n")
                 out.write("\n")                
                 out.close()
