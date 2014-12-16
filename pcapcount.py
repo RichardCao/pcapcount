@@ -32,6 +32,7 @@ class sendData(multiprocessing.Process):
 		self.myblock.release()
 		count_slot = flow_count_f["pktcountslot"]
 		del flow_count_f["pktcountslot"]
+		''' replace the following part with curl request'''
                 outfile = "./" + self.outfilepre + time.strftime("%Y-%m-%d-%H-%M-%S")
 		out = open(outfile, 'w')
                 out.write("# of flows = " + str(len(flow_count_f)) + "\n# of packets = " + str(count_slot) + "\n")
@@ -40,6 +41,7 @@ class sendData(multiprocessing.Process):
                     out.write(obj[0][0] + " " + obj[0][1] + " " + str(obj[1]) +  "\n")
                 out.write("\n")                
                 out.close()
+		''' '''
             time.sleep(self.interval)
     def stop(self):
 	self.threadalive = False
