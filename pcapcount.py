@@ -2,11 +2,12 @@ import pcap
 import dpkt
 import multiprocessing
 import time
-import copy
 import traceback
 import atexit
 import signal
 import sys
+import commands
+
 
 
 class sendData(multiprocessing.Process):
@@ -43,6 +44,9 @@ class sendData(multiprocessing.Process):
                 print "rest_str =", rest_str
                 cmd = "curl -X PUT -d '%s' http://10.1.0.122:8080/simpleswitch/statinfo/5e3e089e01a7de53" % rest_str
                 print cmd
+                (status, output) = commands.getstatusoutput(cmd)
+                print "status =", status
+                print "output =", output
                 for obj in sorted_flow_count:
                     out.write(obj[0][0] + " " + obj[0][1] + " " + str(obj[1]) + "\n")
                 out.write("\n")
